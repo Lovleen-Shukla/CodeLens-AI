@@ -1,0 +1,90 @@
+{
+  "name": "codelens-ai",
+  "displayName": "CodeLens AI",
+  "description": "Understand any codebase — file explainer, dependency graph, and AI chat. Works with Anthropic, OpenAI, Gemini, Groq, and Ollama.",
+  "version": "0.3.0",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["AI", "Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "codelensai.openDashboard",      "title": "CodeLens AI: Open Dashboard" },
+      { "command": "codelensai.explainFile",         "title": "CodeLens AI: Explain This File" },
+      { "command": "codelensai.explainSelection",    "title": "CodeLens AI: Explain Selected Code" },
+      { "command": "codelensai.projectOverview",     "title": "CodeLens AI: Project Overview (I'm Lost)" },
+      { "command": "codelensai.showDependencyGraph", "title": "CodeLens AI: Show Dependency Graph" },
+      { "command": "codelensai.generateReadme",      "title": "CodeLens AI: Generate README" },
+      { "command": "codelensai.openChat",            "title": "CodeLens AI: Open Chat" },
+      { "command": "codelensai.setApiKey",           "title": "CodeLens AI: Set API Key" },
+      { "command": "codelensai.switchProvider",      "title": "CodeLens AI: Switch AI Provider" },
+      { "command": "codelensai.showProviderStatus",  "title": "CodeLens AI: Show Current Provider & Model" }
+    ],
+    "menus": {
+      "explorer/context": [
+        { "command": "codelensai.explainFile",  "group": "codelensai" },
+        { "command": "codelensai.openDashboard","group": "codelensai" }
+      ],
+      "editor/context": [
+        { "command": "codelensai.explainSelection", "when": "editorHasSelection", "group": "codelensai" },
+        { "command": "codelensai.explainFile", "group": "codelensai" }
+      ],
+      "editor/title": [
+        { "command": "codelensai.openDashboard", "group": "navigation" }
+      ]
+    },
+    "keybindings": [
+      { "command": "codelensai.openDashboard",   "key": "ctrl+shift+a", "mac": "cmd+shift+a" },
+      { "command": "codelensai.explainSelection","key": "ctrl+shift+e", "mac": "cmd+shift+e", "when": "editorHasSelection" }
+    ],
+    "configuration": {
+      "title": "CodeLens AI",
+      "properties": {
+        "codelensai.provider": {
+          "type": "string",
+          "default": "anthropic",
+          "enum": ["anthropic","openai","gemini","groq","ollama"],
+          "enumDescriptions": [
+            "Anthropic Claude — claude-opus-4-5, sonnet, haiku",
+            "OpenAI GPT — gpt-4o, gpt-4-turbo, gpt-3.5-turbo",
+            "Google Gemini — gemini-2.0-flash, gemini-1.5-pro",
+            "Groq — fast llama3 / mixtral inference",
+            "Ollama — local models, no API key needed"
+          ],
+          "description": "Which AI provider to use"
+        },
+        "codelensai.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model override. Leave empty to use the provider default."
+        },
+        "codelensai.ollamaUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Base URL for your local Ollama instance"
+        },
+        "codelensai.enableCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Explain hints above every function in the editor"
+        },
+        "codelensai.maxFileSize": {
+          "type": "number",
+          "default": 50000,
+          "description": "Max file size in bytes sent to AI"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}
