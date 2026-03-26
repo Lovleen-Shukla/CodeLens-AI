@@ -72,7 +72,7 @@ function buildErrorMessage(providerName: string, status: number, body: string, m
 }
 
 export class AIClient {
-  constructor(private context: vscode.ExtensionContext) {}
+  constructor(private context: vscode.ExtensionContext) { }
 
   getProvider(): Provider {
     return (vscode.workspace.getConfiguration('codelensai').get<string>('provider') ?? 'anthropic') as Provider;
@@ -156,25 +156,25 @@ export class AIClient {
         try {
           const ev = JSON.parse(json) as { type: string; delta?: { type: string; text: string } };
           if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') onChunk(ev.delta.text);
-        } catch {}
+        } catch { }
       }
     }
   }
 
   // ── OpenAI-compatible format ────────────────────────────────────────────
 
-  private buildOpenAIBody(messages: Message[], systemPrompt: string | undefined, stream: boolean): Record<string, unknown> {
-    const oaiMessages: Array<{ role: string; content: string }> = [];
-    if (systemPrompt) oaiMessages.push({ role: 'system', content: systemPrompt });
-    oaiMessages.push(...messages);
-    const body: Record<string, unknown> = {
-      model: this.getModel(),
-      max_tokens: 2048,
-      messages: oaiMessages,
-    };
-    if (stream) body.stream = true;
-    return body;
-  }
+private buildOpenAIBody(messages: Message[], systemPrompt: string | undefined, stream: boolean, maxTokens: number): Record<string, unknown> {
+  const oaiMessages: Array<{ role: string; content: string }> = [];
+  if (systemPrompt) oaiMessages.push({ role: 'system', content: systemPrompt });
+  oaiMessages.push(...messages);
+  
+  return {
+    model: this.getModel(),
+    max_tokens: maxTokens, // This MUST use the parameter
+    messages: oaiMessages,
+    stream: stream
+  };
+}
 
   private async parseOpenAIResponse(res: Response): Promise<string> {
     const data = await res.json() as { choices: Array<{ message: { content: string } }> };
@@ -199,57 +199,47 @@ export class AIClient {
           const ev = JSON.parse(json) as { choices?: Array<{ delta?: { content?: string } }> };
           const chunk = ev.choices?.[0]?.delta?.content;
           if (chunk) onChunk(chunk);
-        } catch {}
+        } catch { }
       }
     }
   }
 
   // ── Public API ──────────────────────────────────────────────────────────
 
-  async ask(prompt: string, systemPrompt?: string): Promise<string> {
-    return this.chat([{ role: 'user', content: prompt }], systemPrompt);
+  async ask(prompt: string, systemPrompt?: string, maxTokens: number = 400): Promise<string> {
+  // Pass the maxTokens all the way through
+  return this.chat([{ role: 'user', content: prompt }], systemPrompt, maxTokens);
+}
+
+async chat(messages: Message[], systemPrompt?: string, maxTokens: number = 2048): Promise<string> {
+  const apiKey = await this.getApiKey();
+  const cfg = this.getProviderConfig();
+  
+  // Ensure the body builder receives the maxTokens
+  const body = cfg.format === 'anthropic'
+    ? this.buildAnthropicBody(messages, systemPrompt, false) 
+    : this.buildOpenAIBody(messages, systemPrompt, false, maxTokens);
+
+  const res = await fetch(cfg.baseUrl, {
+    method: 'POST',
+    headers: this.buildHeaders(apiKey, cfg),
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API Error: ${res.status} - ${err}`);
   }
 
-  async chat(messages: Message[], systemPrompt?: string): Promise<string> {
-    let apiKey: string;
-    try {
-      apiKey = await this.getApiKey();
-    } catch (e) {
-      const choice = await vscode.window.showErrorMessage(
-        `CodeLens AI: No API key for ${this.getProviderConfig().name}.`,
-        'Set API Key'
-      );
-      if (choice === 'Set API Key') await vscode.commands.executeCommand('codelensai.setApiKey');
-      throw e;
-    }
-
-    const cfg = this.getProviderConfig();
-    const body = cfg.format === 'anthropic'
-      ? this.buildAnthropicBody(messages, systemPrompt, false)
-      : this.buildOpenAIBody(messages, systemPrompt, false);
-
-    const res = await fetch(cfg.baseUrl, {
-      method: 'POST',
-      headers: this.buildHeaders(apiKey, cfg),
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(buildErrorMessage(cfg.name, res.status, err, this.getModel()));
-    }
-
-    return cfg.format === 'anthropic'
-      ? this.parseAnthropicResponse(res)
-      : this.parseOpenAIResponse(res);
-  }
+  return this.parseOpenAIResponse(res);
+}
 
   async stream(messages: Message[], systemPrompt: string, onChunk: (text: string) => void): Promise<void> {
     const apiKey = await this.getApiKey();
     const cfg = this.getProviderConfig();
     const body = cfg.format === 'anthropic'
       ? this.buildAnthropicBody(messages, systemPrompt, true)
-      : this.buildOpenAIBody(messages, systemPrompt, true);
+      : this.buildOpenAIBody(messages, systemPrompt, true, 2048);
 
     const res = await fetch(cfg.baseUrl, {
       method: 'POST',

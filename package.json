@@ -1,41 +1,110 @@
 {
   "name": "codelens-ai",
   "displayName": "CodeLens AI",
-  "description": "Understand any codebase — file explainer, dependency graph, and AI chat. Works with Anthropic, OpenAI, Gemini, Groq, and Ollama.",
+  "description": "Understand any codebase \u2014 file explainer, dependency graph, and AI chat. Works with Anthropic, OpenAI, Gemini, Groq, and Ollama.",
   "version": "0.3.0",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["AI", "Other"],
-  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      { "command": "codelensai.openDashboard",      "title": "CodeLens AI: Open Dashboard" },
-      { "command": "codelensai.explainFile",         "title": "CodeLens AI: Explain This File" },
-      { "command": "codelensai.explainSelection",    "title": "CodeLens AI: Explain Selected Code" },
-      { "command": "codelensai.projectOverview",     "title": "CodeLens AI: Project Overview (I'm Lost)" },
-      { "command": "codelensai.showDependencyGraph", "title": "CodeLens AI: Show Dependency Graph" },
-      { "command": "codelensai.generateReadme",      "title": "CodeLens AI: Generate README" },
-      { "command": "codelensai.openChat",            "title": "CodeLens AI: Open Chat" },
-      { "command": "codelensai.setApiKey",           "title": "CodeLens AI: Set API Key" },
-      { "command": "codelensai.switchProvider",      "title": "CodeLens AI: Switch AI Provider" },
-      { "command": "codelensai.showProviderStatus",  "title": "CodeLens AI: Show Current Provider & Model" }
+      {
+        "command": "codelensai.openDashboard",
+        "title": "CodeLens AI: Open Dashboard",
+        "icon": "$(search-view-icon)"
+      },
+      {
+        "command": "codelensai.explainFile",
+        "title": "CodeLens AI: Explain This File"
+      },
+      {
+        "command": "codelensai.explainSelection",
+        "title": "CodeLens AI: Explain Selected Code"
+      },
+      {
+        "command": "codelensai.projectOverview",
+        "title": "CodeLens AI: Project Overview (I'm Lost)"
+      },
+      {
+        "command": "codelensai.showDependencyGraph",
+        "title": "CodeLens AI: Show Dependency Graph"
+      },
+      {
+        "command": "codelensai.generateReadme",
+        "title": "CodeLens AI: Generate README"
+      },
+      {
+        "command": "codelensai.openChat",
+        "title": "CodeLens AI: Open Chat"
+      },
+      {
+        "command": "codelensai.setApiKey",
+        "title": "CodeLens AI: Set API Key"
+      },
+      {
+        "command": "codelensai.switchProvider",
+        "title": "CodeLens AI: Switch AI Provider"
+      },
+      {
+        "command": "codelensai.showProviderStatus",
+        "title": "CodeLens AI: Show Current Provider & Model"
+      },
+      {
+        "command": "codelensai.genArchDiagram",
+        "title": "CodeLens AI: Generate Architecture Diagram",
+        "icon": "$(type-hierarchy)"
+      }
     ],
     "menus": {
       "explorer/context": [
-        { "command": "codelensai.explainFile",  "group": "codelensai" },
-        { "command": "codelensai.openDashboard","group": "codelensai" }
+        {
+          "command": "codelensai.explainFile",
+          "group": "codelensai"
+        },
+        {
+          "command": "codelensai.openDashboard",
+          "group": "codelensai"
+        }
       ],
       "editor/context": [
-        { "command": "codelensai.explainSelection", "when": "editorHasSelection", "group": "codelensai" },
-        { "command": "codelensai.explainFile", "group": "codelensai" }
+        {
+          "command": "codelensai.explainSelection",
+          "when": "editorHasSelection",
+          "group": "codelensai"
+        },
+        {
+          "command": "codelensai.explainFile",
+          "group": "codelensai"
+        }
       ],
       "editor/title": [
-        { "command": "codelensai.openDashboard", "group": "navigation" }
+        {
+          "command": "codelensai.openDashboard",
+          "group": "navigation",
+          "when": "editorIsOpen"
+        }
       ]
     },
     "keybindings": [
-      { "command": "codelensai.openDashboard",   "key": "ctrl+shift+a", "mac": "cmd+shift+a" },
-      { "command": "codelensai.explainSelection","key": "ctrl+shift+e", "mac": "cmd+shift+e", "when": "editorHasSelection" }
+      {
+        "command": "codelensai.openDashboard",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a"
+      },
+      {
+        "command": "codelensai.explainSelection",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "editorHasSelection"
+      }
     ],
     "configuration": {
       "title": "CodeLens AI",
@@ -43,13 +112,19 @@
         "codelensai.provider": {
           "type": "string",
           "default": "anthropic",
-          "enum": ["anthropic","openai","gemini","groq","ollama"],
+          "enum": [
+            "anthropic",
+            "openai",
+            "gemini",
+            "groq",
+            "ollama"
+          ],
           "enumDescriptions": [
-            "Anthropic Claude — claude-opus-4-5, sonnet, haiku",
-            "OpenAI GPT — gpt-4o, gpt-4-turbo, gpt-3.5-turbo",
-            "Google Gemini — gemini-2.0-flash, gemini-1.5-pro",
-            "Groq — fast llama3 / mixtral inference",
-            "Ollama — local models, no API key needed"
+            "Anthropic Claude \u2014 claude-opus-4-5, sonnet, haiku",
+            "OpenAI GPT \u2014 gpt-4o, gpt-4-turbo, gpt-3.5-turbo",
+            "Google Gemini \u2014 gemini-2.0-flash, gemini-1.5-pro",
+            "Groq \u2014 fast llama3 / mixtral inference",
+            "Ollama \u2014 local models, no API key needed"
           ],
           "description": "Which AI provider to use"
         },
@@ -74,6 +149,24 @@
           "description": "Max file size in bytes sent to AI"
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codelensai",
+          "title": "CodeLens AI",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codelensai": [
+        {
+          "type": "webview",
+          "id": "codelensai.sidebarView",
+          "name": "CodeLens AI"
+        }
+      ]
     }
   },
   "scripts": {

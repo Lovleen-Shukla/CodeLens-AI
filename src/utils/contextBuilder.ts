@@ -188,33 +188,73 @@ ${content}
 `.trim();
 }
 
-/** Detect the project's tech stack */
+/** Detect the project's tech stack — searches root + one level deep for monorepos */
 export function detectTechStack(rootPath: string): string[] {
-  const stack: string[] = [];
-  const check = (file: string) => fs.existsSync(path.join(rootPath, file));
+  const found = new Set<string>();
+  const checkPath = (p: string) => fs.existsSync(p);
 
-  if (check('package.json')) {
-    stack.push('Node.js / JavaScript');
+  // Collect all package.json paths: root + direct subfolders (monorepo support)
+  const pkgPaths: string[] = [];
+  if (checkPath(path.join(rootPath, 'package.json'))) {
+    pkgPaths.push(path.join(rootPath, 'package.json'));
+  }
+  try {
+    const entries = fs.readdirSync(rootPath, { withFileTypes: true });
+    for (const e of entries) {
+      if (e.isDirectory() && !IGNORE_DIRS.has(e.name)) {
+        const sub = path.join(rootPath, e.name, 'package.json');
+        if (checkPath(sub)) pkgPaths.push(sub);
+      }
+    }
+  } catch {}
+
+  for (const pkgPath of pkgPaths) {
+    found.add('Node.js / JavaScript');
     try {
-      const pkg = JSON.parse(fs.readFileSync(path.join(rootPath, 'package.json'), 'utf8'));
-      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-      if (deps['react']) stack.push('React');
-      if (deps['next']) stack.push('Next.js');
-      if (deps['vue']) stack.push('Vue');
-      if (deps['svelte']) stack.push('Svelte');
-      if (deps['express']) stack.push('Express');
-      if (deps['typescript']) stack.push('TypeScript');
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies };
+      if (deps['react'] || deps['react-dom']) found.add('React');
+      if (deps['next']) found.add('Next.js');
+      if (deps['vue']) found.add('Vue');
+      if (deps['svelte']) found.add('Svelte');
+      if (deps['express']) found.add('Express');
+      if (deps['fastify']) found.add('Fastify');
+      if (deps['koa']) found.add('Koa');
+      if (deps['nestjs'] || deps['@nestjs/core']) found.add('NestJS');
+      if (deps['typescript']) found.add('TypeScript');
+      if (deps['socket.io'] || deps['socket.io-client']) found.add('Socket.IO');
+      if (deps['mongoose']) found.add('MongoDB / Mongoose');
+      if (deps['sequelize'] || deps['typeorm']) found.add('SQL ORM');
+      if (deps['prisma'] || deps['@prisma/client']) found.add('Prisma');
+      if (deps['tailwindcss']) found.add('Tailwind CSS');
+      if (deps['@mui/material'] || deps['antd']) found.add('UI Library');
+      if (deps['redux'] || deps['@reduxjs/toolkit']) found.add('Redux');
+      if (deps['vite']) found.add('Vite');
+      if (deps['webpack']) found.add('Webpack');
+      if (deps['jest'] || deps['vitest']) found.add('Testing');
     } catch {}
   }
-  if (check('requirements.txt') || check('pyproject.toml')) stack.push('Python');
-  if (check('go.mod')) stack.push('Go');
-  if (check('Cargo.toml')) stack.push('Rust');
-  if (check('pom.xml') || check('build.gradle')) stack.push('Java');
-  if (check('Gemfile')) stack.push('Ruby');
-  if (check('composer.json')) stack.push('PHP');
-  if (check('Dockerfile')) stack.push('Docker');
-  if (check('.github/workflows')) stack.push('GitHub Actions');
-  if (check('prisma/schema.prisma')) stack.push('Prisma');
 
-  return stack;
+  // Check root-level markers regardless
+  const check = (f: string) => checkPath(path.join(rootPath, f));
+  if (check('requirements.txt') || check('pyproject.toml') || check('setup.py')) found.add('Python');
+  if (check('go.mod')) found.add('Go');
+  if (check('Cargo.toml')) found.add('Rust');
+  if (check('pom.xml') || check('build.gradle')) found.add('Java');
+  if (check('Gemfile')) found.add('Ruby');
+  if (check('composer.json')) found.add('PHP');
+  if (check('Dockerfile') || check('docker-compose.yml') || check('docker-compose.yaml')) found.add('Docker');
+  if (check('.github/workflows')) found.add('GitHub Actions');
+  // Also check one level deep for Dockerfiles
+  try {
+    const entries = fs.readdirSync(rootPath, { withFileTypes: true });
+    for (const e of entries) {
+      if (e.isDirectory() && !IGNORE_DIRS.has(e.name)) {
+        if (checkPath(path.join(rootPath, e.name, 'Dockerfile'))) found.add('Docker');
+        if (checkPath(path.join(rootPath, e.name, 'requirements.txt'))) found.add('Python');
+      }
+    }
+  } catch {}
+
+  return Array.from(found);
 }

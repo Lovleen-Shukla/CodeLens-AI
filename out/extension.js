@@ -44,6 +44,33 @@ const commands_1 = require("./utils/commands");
 function activate(context) {
     console.log('CodeLens AI is now active');
     const aiClient = new aiClient_1.AIClient(context);
+    // ── Sidebar icon click → open dashboard ────────────────────────────────
+    // Register a minimal WebviewView so the activity bar icon appears.
+    // When the user clicks the icon, we open the full dashboard panel.
+    const sidebarProvider = {
+        resolveWebviewView(view) {
+            view.webview.options = { enableScripts: true };
+            view.webview.html = `<!DOCTYPE html><html><head><style>
+        body{background:#0d0f14;color:#6b7280;font-family:'Segoe UI',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:16px;margin:0;text-align:center}
+        button{background:#6c63ff;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit}
+        button:hover{background:#8078ff}
+        .logo{font-size:16px;font-weight:700;color:#e2e4ed}
+        .logo span{color:#6c63ff}
+        p{font-size:12px;line-height:1.6;max-width:180px}
+      </style></head><body>
+        <div class="logo">Code<span>Lens</span> AI</div>
+        <p>Open the full dashboard to explore your codebase</p>
+        <button onclick="acquireVsCodeApi().postMessage({type:'open'})">Open Dashboard</button>
+      </body></html>`;
+            view.webview.onDidReceiveMessage(msg => {
+                if (msg.type === 'open')
+                    vscode.commands.executeCommand('codelensai.openDashboard');
+            });
+            // Auto-open dashboard when sidebar is first revealed
+            setTimeout(() => vscode.commands.executeCommand('codelensai.openDashboard'), 300);
+        }
+    };
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider('codelensai.sidebarView', sidebarProvider));
     // ── CodeLens hints above functions ─────────────────────────────────────
     context.subscriptions.push(vscode.languages.registerCodeLensProvider('*', new codeLensProvider_1.CodeLensProvider()));
     // ── Hover provider ──────────────────────────────────────────────────────

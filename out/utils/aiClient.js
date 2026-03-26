@@ -183,19 +183,17 @@ class AIClient {
         }
     }
     // ── OpenAI-compatible format ────────────────────────────────────────────
-    buildOpenAIBody(messages, systemPrompt, stream) {
+    buildOpenAIBody(messages, systemPrompt, stream, maxTokens) {
         const oaiMessages = [];
         if (systemPrompt)
             oaiMessages.push({ role: 'system', content: systemPrompt });
         oaiMessages.push(...messages);
-        const body = {
+        return {
             model: this.getModel(),
-            max_tokens: 2048,
+            max_tokens: maxTokens, // This MUST use the parameter
             messages: oaiMessages,
+            stream: stream
         };
-        if (stream)
-            body.stream = true;
-        return body;
     }
     async parseOpenAIResponse(res) {
         const data = await res.json();
@@ -229,24 +227,17 @@ class AIClient {
         }
     }
     // ── Public API ──────────────────────────────────────────────────────────
-    async ask(prompt, systemPrompt) {
-        return this.chat([{ role: 'user', content: prompt }], systemPrompt);
+    async ask(prompt, systemPrompt, maxTokens = 400) {
+        // Pass the maxTokens all the way through
+        return this.chat([{ role: 'user', content: prompt }], systemPrompt, maxTokens);
     }
-    async chat(messages, systemPrompt) {
-        let apiKey;
-        try {
-            apiKey = await this.getApiKey();
-        }
-        catch (e) {
-            const choice = await vscode.window.showErrorMessage(`CodeLens AI: No API key for ${this.getProviderConfig().name}.`, 'Set API Key');
-            if (choice === 'Set API Key')
-                await vscode.commands.executeCommand('codelensai.setApiKey');
-            throw e;
-        }
+    async chat(messages, systemPrompt, maxTokens = 2048) {
+        const apiKey = await this.getApiKey();
         const cfg = this.getProviderConfig();
+        // Ensure the body builder receives the maxTokens
         const body = cfg.format === 'anthropic'
             ? this.buildAnthropicBody(messages, systemPrompt, false)
-            : this.buildOpenAIBody(messages, systemPrompt, false);
+            : this.buildOpenAIBody(messages, systemPrompt, false, maxTokens);
         const res = await fetch(cfg.baseUrl, {
             method: 'POST',
             headers: this.buildHeaders(apiKey, cfg),
@@ -254,18 +245,16 @@ class AIClient {
         });
         if (!res.ok) {
             const err = await res.text();
-            throw new Error(buildErrorMessage(cfg.name, res.status, err, this.getModel()));
+            throw new Error(`API Error: ${res.status} - ${err}`);
         }
-        return cfg.format === 'anthropic'
-            ? this.parseAnthropicResponse(res)
-            : this.parseOpenAIResponse(res);
+        return this.parseOpenAIResponse(res);
     }
     async stream(messages, systemPrompt, onChunk) {
         const apiKey = await this.getApiKey();
         const cfg = this.getProviderConfig();
         const body = cfg.format === 'anthropic'
             ? this.buildAnthropicBody(messages, systemPrompt, true)
-            : this.buildOpenAIBody(messages, systemPrompt, true);
+            : this.buildOpenAIBody(messages, systemPrompt, true, 2048);
         const res = await fetch(cfg.baseUrl, {
             method: 'POST',
             headers: this.buildHeaders(apiKey, cfg),
