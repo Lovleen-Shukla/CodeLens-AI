@@ -30,7 +30,7 @@ function isEnvDir(dirPath: string): boolean {
   try {
     const fs = require('fs');
     return fs.existsSync(require('path').join(dirPath, 'conda-meta')) ||
-           fs.existsSync(require('path').join(dirPath, 'pyvenv.cfg'));
+      fs.existsSync(require('path').join(dirPath, 'pyvenv.cfg'));
   } catch { return false; }
 }
 
@@ -88,7 +88,7 @@ export function readFileSafe(filePath: string, maxBytes = 50000): string {
 export function getWorkspaceFiles(rootPath: string, limit = 200): string[] {
   const files: string[] = [];
 
-  function walk(dir: string) {
+function walk(dir: string) {
     if (files.length >= limit) return;
     let entries: fs.Dirent[];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
@@ -96,14 +96,24 @@ export function getWorkspaceFiles(rootPath: string, limit = 200): string[] {
 
     for (const entry of entries) {
       if (files.length >= limit) break;
-      if (entry.name.startsWith('.') && entry.name !== '.env.example') continue;
+      
+      const name = entry.name;
+      const lowerName = name.toLowerCase();
+
+      // Skip hidden files/folders (except .env.example)
+      if (name.startsWith('.') && name !== '.env.example') continue;
+
       if (entry.isDirectory()) {
-        const fullPath = path.join(dir, entry.name);
-        if (!IGNORE_DIRS.has(entry.name) && !isEnvDir(fullPath)) walk(fullPath);
+        const fullPath = path.join(dir, name);
+        // FIXED: Case-insensitive check and environment check
+        if (!IGNORE_DIRS.has(lowerName) && !isEnvDir(fullPath)) {
+          walk(fullPath);
+        }
       } else {
-        const ext = path.extname(entry.name).toLowerCase();
-        const fp = path.join(dir, entry.name);
-        if (CODE_EXTENSIONS.has(ext) && !isNoiseFile(fp)) files.push(fp);
+        const ext = path.extname(name).toLowerCase();
+        if (CODE_EXTENSIONS.has(ext) && !isNoiseFile(path.join(dir, name))) {
+          files.push(path.join(dir, name));
+        }
       }
     }
   }
@@ -154,15 +164,22 @@ export function extractImports(content: string, filePath: string): string[] {
 /** Build a summary of files and their imports for the dependency graph */
 export function buildDependencyMap(rootPath: string): FileNode[] {
   const files = getWorkspaceFiles(rootPath, 100);
-  return files.map(filePath => {
-    const content = readFileSafe(filePath, 20000);
-    return {
-      path: filePath,
-      relativePath: path.relative(rootPath, filePath),
-      imports: extractImports(content, filePath),
-      size: fs.statSync(filePath).size,
-    };
-  });
+  const nodes: FileNode[] = [];
+  for (const filePath of files) {
+    try {
+      const content = readFileSafe(filePath, 20000);
+      const size = fs.statSync(filePath).size;
+      nodes.push({
+        path: filePath,
+        relativePath: path.relative(rootPath, filePath),
+        imports: extractImports(content, filePath),
+        size,
+      });
+    } catch {
+      // Skip files that disappear or are temporarily locked during scanning.
+    }
+  }
+  return nodes;
 }
 
 /** Gather context about the current file + its neighbors for AI prompts */
@@ -206,7 +223,7 @@ export function detectTechStack(rootPath: string): string[] {
         if (checkPath(sub)) pkgPaths.push(sub);
       }
     }
-  } catch {}
+  } catch { }
 
   for (const pkgPath of pkgPaths) {
     found.add('Node.js / JavaScript');
@@ -232,7 +249,7 @@ export function detectTechStack(rootPath: string): string[] {
       if (deps['vite']) found.add('Vite');
       if (deps['webpack']) found.add('Webpack');
       if (deps['jest'] || deps['vitest']) found.add('Testing');
-    } catch {}
+    } catch { }
   }
 
   // Check root-level markers regardless
@@ -254,7 +271,7 @@ export function detectTechStack(rootPath: string): string[] {
         if (checkPath(path.join(rootPath, e.name, 'requirements.txt'))) found.add('Python');
       }
     }
-  } catch {}
+  } catch { }
 
   return Array.from(found);
 }

@@ -137,18 +137,23 @@ function getWorkspaceFiles(rootPath, limit = 200) {
         for (const entry of entries) {
             if (files.length >= limit)
                 break;
-            if (entry.name.startsWith('.') && entry.name !== '.env.example')
+            const name = entry.name;
+            const lowerName = name.toLowerCase();
+            // Skip hidden files/folders (except .env.example)
+            if (name.startsWith('.') && name !== '.env.example')
                 continue;
             if (entry.isDirectory()) {
-                const fullPath = path.join(dir, entry.name);
-                if (!IGNORE_DIRS.has(entry.name) && !isEnvDir(fullPath))
+                const fullPath = path.join(dir, name);
+                // FIXED: Case-insensitive check and environment check
+                if (!IGNORE_DIRS.has(lowerName) && !isEnvDir(fullPath)) {
                     walk(fullPath);
+                }
             }
             else {
-                const ext = path.extname(entry.name).toLowerCase();
-                const fp = path.join(dir, entry.name);
-                if (CODE_EXTENSIONS.has(ext) && !isNoiseFile(fp))
-                    files.push(fp);
+                const ext = path.extname(name).toLowerCase();
+                if (CODE_EXTENSIONS.has(ext) && !isNoiseFile(path.join(dir, name))) {
+                    files.push(path.join(dir, name));
+                }
             }
         }
     }
@@ -200,15 +205,23 @@ function extractImports(content, filePath) {
 /** Build a summary of files and their imports for the dependency graph */
 function buildDependencyMap(rootPath) {
     const files = getWorkspaceFiles(rootPath, 100);
-    return files.map(filePath => {
-        const content = readFileSafe(filePath, 20000);
-        return {
-            path: filePath,
-            relativePath: path.relative(rootPath, filePath),
-            imports: extractImports(content, filePath),
-            size: fs.statSync(filePath).size,
-        };
-    });
+    const nodes = [];
+    for (const filePath of files) {
+        try {
+            const content = readFileSafe(filePath, 20000);
+            const size = fs.statSync(filePath).size;
+            nodes.push({
+                path: filePath,
+                relativePath: path.relative(rootPath, filePath),
+                imports: extractImports(content, filePath),
+                size,
+            });
+        }
+        catch {
+            // Skip files that disappear or are temporarily locked during scanning.
+        }
+    }
+    return nodes;
 }
 /** Gather context about the current file + its neighbors for AI prompts */
 function buildFileContext(filePath, rootPath) {

@@ -39,7 +39,7 @@ exports.PROVIDERS = {
     anthropic: {
         name: 'Anthropic (Claude)',
         baseUrl: 'https://api.anthropic.com/v1/messages',
-        defaultModel: 'claude-opus-4-5',
+        defaultModel: 'claude-sonnet-4-5',
         models: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5-20251001'],
         headerKey: 'x-api-key',
         extraHeaders: { 'anthropic-version': '2023-06-01' },
@@ -50,17 +50,33 @@ exports.PROVIDERS = {
         baseUrl: 'https://api.openai.com/v1/chat/completions',
         defaultModel: 'gpt-4o',
         models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-        headerKey: 'Authorization', // value will be prefixed with "Bearer "
+        headerKey: 'Authorization',
         format: 'openai',
     },
     gemini: {
         name: 'Google (Gemini)',
-        // Google's OpenAI-compatible endpoint (requires API key as Bearer token)
         baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
         defaultModel: 'gemini-2.0-flash',
         models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'],
         headerKey: 'Authorization',
         format: 'openai',
+    },
+    openrouter: {
+        name: 'OpenRouter',
+        baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+        defaultModel: 'openai/gpt-oss-120b',
+        models: [
+            'openai/gpt-oss-120b',
+            'openai/gpt-oss-120b:free',
+            'anthropic/claude-3.5-sonnet',
+            'google/gemini-2.5-pro'
+        ],
+        headerKey: 'Authorization',
+        format: 'openai',
+        extraHeaders: {
+            'HTTP-Referer': 'https://github.com/lovleen-shukla/codelens-ai', // Recommended by OpenRouter
+            'X-Title': 'CodeLens AI'
+        }
     },
     groq: {
         name: 'Groq (fast inference)',
@@ -72,10 +88,10 @@ exports.PROVIDERS = {
     },
     ollama: {
         name: 'Ollama (local)',
-        baseUrl: 'http://localhost:11434/v1/chat/completions', // overridden at runtime via config
+        baseUrl: 'http://localhost:11434/v1/chat/completions',
         defaultModel: 'llama3',
         models: ['llama3', 'mistral', 'codellama', 'deepseek-coder'],
-        headerKey: 'Authorization', // Ollama ignores auth but keeps same shape
+        headerKey: 'Authorization',
         format: 'openai',
     },
 };
@@ -115,12 +131,11 @@ class AIClient {
         const secret = await this.context.secrets.get(secretKey);
         if (secret)
             return secret;
-        // fallback: legacy single key
         const legacy = await this.context.secrets.get('codelensai.apiKey');
         if (legacy && provider === 'anthropic')
             return legacy;
         if (provider === 'ollama')
-            return 'ollama'; // Ollama doesn't need a real key
+            return 'ollama';
         throw new Error(`No API key for ${this.getProviderConfig().name}. Run "CodeLens AI: Set API Key".`);
     }
     async setApiKey(key) {
@@ -140,10 +155,10 @@ class AIClient {
         return headers;
     }
     // ── Anthropic format ────────────────────────────────────────────────────
-    buildAnthropicBody(messages, systemPrompt, stream) {
+    buildAnthropicBody(messages, systemPrompt, stream, maxTokens = 2048) {
         const body = {
             model: this.getModel(),
-            max_tokens: 2048,
+            max_tokens: maxTokens,
             messages,
         };
         if (systemPrompt)
@@ -190,9 +205,9 @@ class AIClient {
         oaiMessages.push(...messages);
         return {
             model: this.getModel(),
-            max_tokens: maxTokens, // This MUST use the parameter
+            max_tokens: maxTokens,
             messages: oaiMessages,
-            stream: stream
+            stream,
         };
     }
     async parseOpenAIResponse(res) {
@@ -227,16 +242,14 @@ class AIClient {
         }
     }
     // ── Public API ──────────────────────────────────────────────────────────
-    async ask(prompt, systemPrompt, maxTokens = 400) {
-        // Pass the maxTokens all the way through
+    async ask(prompt, systemPrompt, maxTokens = 2048) {
         return this.chat([{ role: 'user', content: prompt }], systemPrompt, maxTokens);
     }
     async chat(messages, systemPrompt, maxTokens = 2048) {
         const apiKey = await this.getApiKey();
         const cfg = this.getProviderConfig();
-        // Ensure the body builder receives the maxTokens
         const body = cfg.format === 'anthropic'
-            ? this.buildAnthropicBody(messages, systemPrompt, false)
+            ? this.buildAnthropicBody(messages, systemPrompt, false, maxTokens)
             : this.buildOpenAIBody(messages, systemPrompt, false, maxTokens);
         const res = await fetch(cfg.baseUrl, {
             method: 'POST',
@@ -245,15 +258,21 @@ class AIClient {
         });
         if (!res.ok) {
             const err = await res.text();
-            throw new Error(`API Error: ${res.status} - ${err}`);
+            throw new Error(buildErrorMessage(cfg.name, res.status, err, this.getModel()));
         }
-        return this.parseOpenAIResponse(res);
+        // ── FIX: use correct parser per provider format ──────────────────────
+        if (cfg.format === 'anthropic') {
+            return this.parseAnthropicResponse(res);
+        }
+        else {
+            return this.parseOpenAIResponse(res);
+        }
     }
     async stream(messages, systemPrompt, onChunk) {
         const apiKey = await this.getApiKey();
         const cfg = this.getProviderConfig();
         const body = cfg.format === 'anthropic'
-            ? this.buildAnthropicBody(messages, systemPrompt, true)
+            ? this.buildAnthropicBody(messages, systemPrompt, true, 2048)
             : this.buildOpenAIBody(messages, systemPrompt, true, 2048);
         const res = await fetch(cfg.baseUrl, {
             method: 'POST',

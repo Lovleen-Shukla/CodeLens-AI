@@ -5,23 +5,23 @@ export interface Message {
   content: string;
 }
 
-export type Provider = 'anthropic' | 'openai' | 'gemini' | 'groq' | 'ollama';
+export type Provider = 'anthropic' | 'openai' | 'gemini' | 'groq' | 'ollama'| 'openrouter';
 
 export interface ProviderConfig {
   name: string;
   baseUrl: string;
   defaultModel: string;
   models: string[];
-  headerKey: string;               // header name for API key
+  headerKey: string;
   extraHeaders?: Record<string, string>;
-  format: 'anthropic' | 'openai';  // request/response shape
+  format: 'anthropic' | 'openai';
 }
 
 export const PROVIDERS: Record<Provider, ProviderConfig> = {
   anthropic: {
     name: 'Anthropic (Claude)',
     baseUrl: 'https://api.anthropic.com/v1/messages',
-    defaultModel: 'claude-opus-4-5',
+    defaultModel: 'claude-sonnet-4-5',
     models: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5-20251001'],
     headerKey: 'x-api-key',
     extraHeaders: { 'anthropic-version': '2023-06-01' },
@@ -32,18 +32,37 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     baseUrl: 'https://api.openai.com/v1/chat/completions',
     defaultModel: 'gpt-4o',
     models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-    headerKey: 'Authorization',   // value will be prefixed with "Bearer "
+    headerKey: 'Authorization',
     format: 'openai',
   },
   gemini: {
     name: 'Google (Gemini)',
-    // Google's OpenAI-compatible endpoint (requires API key as Bearer token)
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
     defaultModel: 'gemini-2.0-flash',
     models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'],
     headerKey: 'Authorization',
     format: 'openai',
   },
+
+
+  openrouter: {
+    name: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    defaultModel: 'openai/gpt-oss-120b',
+    models: [
+      'openai/gpt-oss-120b', 
+      'openai/gpt-oss-120b:free', 
+      'anthropic/claude-3.5-sonnet', 
+      'google/gemini-2.5-pro'
+    ],
+    headerKey: 'Authorization',
+    format: 'openai',
+    extraHeaders: {
+      'HTTP-Referer': 'https://github.com/lovleen-shukla/codelens-ai', // Recommended by OpenRouter
+      'X-Title': 'CodeLens AI'
+    }
+  },
+
   groq: {
     name: 'Groq (fast inference)',
     baseUrl: 'https://api.groq.com/openai/v1/chat/completions',
@@ -54,14 +73,13 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
   },
   ollama: {
     name: 'Ollama (local)',
-    baseUrl: 'http://localhost:11434/v1/chat/completions', // overridden at runtime via config
+    baseUrl: 'http://localhost:11434/v1/chat/completions',
     defaultModel: 'llama3',
     models: ['llama3', 'mistral', 'codellama', 'deepseek-coder'],
-    headerKey: 'Authorization',   // Ollama ignores auth but keeps same shape
+    headerKey: 'Authorization',
     format: 'openai',
   },
 };
-
 
 function buildErrorMessage(providerName: string, status: number, body: string, model: string): string {
   let hint = '';
@@ -98,10 +116,9 @@ export class AIClient {
     const secretKey = `codelensai.apiKey.${provider}`;
     const secret = await this.context.secrets.get(secretKey);
     if (secret) return secret;
-    // fallback: legacy single key
     const legacy = await this.context.secrets.get('codelensai.apiKey');
     if (legacy && provider === 'anthropic') return legacy;
-    if (provider === 'ollama') return 'ollama'; // Ollama doesn't need a real key
+    if (provider === 'ollama') return 'ollama';
     throw new Error(`No API key for ${this.getProviderConfig().name}. Run "CodeLens AI: Set API Key".`);
   }
 
@@ -123,10 +140,10 @@ export class AIClient {
 
   // ── Anthropic format ────────────────────────────────────────────────────
 
-  private buildAnthropicBody(messages: Message[], systemPrompt: string | undefined, stream: boolean): Record<string, unknown> {
+  private buildAnthropicBody(messages: Message[], systemPrompt: string | undefined, stream: boolean, maxTokens: number = 2048): Record<string, unknown> {
     const body: Record<string, unknown> = {
       model: this.getModel(),
-      max_tokens: 2048,
+      max_tokens: maxTokens,
       messages,
     };
     if (systemPrompt) body.system = systemPrompt;
@@ -163,18 +180,17 @@ export class AIClient {
 
   // ── OpenAI-compatible format ────────────────────────────────────────────
 
-private buildOpenAIBody(messages: Message[], systemPrompt: string | undefined, stream: boolean, maxTokens: number): Record<string, unknown> {
-  const oaiMessages: Array<{ role: string; content: string }> = [];
-  if (systemPrompt) oaiMessages.push({ role: 'system', content: systemPrompt });
-  oaiMessages.push(...messages);
-  
-  return {
-    model: this.getModel(),
-    max_tokens: maxTokens, // This MUST use the parameter
-    messages: oaiMessages,
-    stream: stream
-  };
-}
+  private buildOpenAIBody(messages: Message[], systemPrompt: string | undefined, stream: boolean, maxTokens: number): Record<string, unknown> {
+    const oaiMessages: Array<{ role: string; content: string }> = [];
+    if (systemPrompt) oaiMessages.push({ role: 'system', content: systemPrompt });
+    oaiMessages.push(...messages);
+    return {
+      model: this.getModel(),
+      max_tokens: maxTokens,
+      messages: oaiMessages,
+      stream,
+    };
+  }
 
   private async parseOpenAIResponse(res: Response): Promise<string> {
     const data = await res.json() as { choices: Array<{ message: { content: string } }> };
@@ -206,39 +222,42 @@ private buildOpenAIBody(messages: Message[], systemPrompt: string | undefined, s
 
   // ── Public API ──────────────────────────────────────────────────────────
 
-  async ask(prompt: string, systemPrompt?: string, maxTokens: number = 400): Promise<string> {
-  // Pass the maxTokens all the way through
-  return this.chat([{ role: 'user', content: prompt }], systemPrompt, maxTokens);
-}
-
-async chat(messages: Message[], systemPrompt?: string, maxTokens: number = 2048): Promise<string> {
-  const apiKey = await this.getApiKey();
-  const cfg = this.getProviderConfig();
-  
-  // Ensure the body builder receives the maxTokens
-  const body = cfg.format === 'anthropic'
-    ? this.buildAnthropicBody(messages, systemPrompt, false) 
-    : this.buildOpenAIBody(messages, systemPrompt, false, maxTokens);
-
-  const res = await fetch(cfg.baseUrl, {
-    method: 'POST',
-    headers: this.buildHeaders(apiKey, cfg),
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`API Error: ${res.status} - ${err}`);
+  async ask(prompt: string, systemPrompt?: string, maxTokens: number = 2048): Promise<string> {
+    return this.chat([{ role: 'user', content: prompt }], systemPrompt, maxTokens);
   }
 
-  return this.parseOpenAIResponse(res);
-}
+  async chat(messages: Message[], systemPrompt?: string, maxTokens: number = 2048): Promise<string> {
+    const apiKey = await this.getApiKey();
+    const cfg = this.getProviderConfig();
+
+    const body = cfg.format === 'anthropic'
+      ? this.buildAnthropicBody(messages, systemPrompt, false, maxTokens)
+      : this.buildOpenAIBody(messages, systemPrompt, false, maxTokens);
+
+    const res = await fetch(cfg.baseUrl, {
+      method: 'POST',
+      headers: this.buildHeaders(apiKey, cfg),
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(buildErrorMessage(cfg.name, res.status, err, this.getModel()));
+    }
+
+    // ── FIX: use correct parser per provider format ──────────────────────
+    if (cfg.format === 'anthropic') {
+      return this.parseAnthropicResponse(res);
+    } else {
+      return this.parseOpenAIResponse(res);
+    }
+  }
 
   async stream(messages: Message[], systemPrompt: string, onChunk: (text: string) => void): Promise<void> {
     const apiKey = await this.getApiKey();
     const cfg = this.getProviderConfig();
     const body = cfg.format === 'anthropic'
-      ? this.buildAnthropicBody(messages, systemPrompt, true)
+      ? this.buildAnthropicBody(messages, systemPrompt, true, 2048)
       : this.buildOpenAIBody(messages, systemPrompt, true, 2048);
 
     const res = await fetch(cfg.baseUrl, {

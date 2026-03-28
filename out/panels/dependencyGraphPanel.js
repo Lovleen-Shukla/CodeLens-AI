@@ -51,24 +51,46 @@ class DependencyGraphPanel {
         this._panel.webview.html = this.getLoadingHtml();
         this.loadGraph();
     }
+    // --- Replace your existing loadGraph() with this ---
     async loadGraph() {
         const rootPath = (0, contextBuilder_1.getWorkspaceRoot)();
+        const path = require('path'); // Ensure path is available
         if (!rootPath) {
             this._panel.webview.html = `<body style="color:white;padding:20px">Open a workspace first.</body>`;
             return;
         }
         const nodes = (0, contextBuilder_1.buildDependencyMap)(rootPath);
+        const edges = [];
+        // In your TypeScript file (DashboardPanel.ts or DependencyGraphPanel.ts)
         const graphData = {
-            nodes: nodes.map(n => ({ id: n.relativePath, label: n.relativePath.split('/').pop() ?? n.relativePath, path: n.relativePath, size: n.size })),
-            edges: [],
+            nodes: nodes.map(n => ({
+                // Fix: Force all backslashes to forward slashes here
+                id: n.relativePath.replace(/\\/g, '/'),
+                label: path.basename(n.relativePath),
+                path: n.relativePath.replace(/\\/g, '/'),
+                size: n.size
+            })),
+            edges: edges.map(e => ({
+                from: e.from.replace(/\\/g, '/'),
+                to: e.to.replace(/\\/g, '/')
+            }))
         };
         for (const node of nodes) {
+            const currentFileDir = path.dirname(node.relativePath);
+            const sourceId = node.relativePath.replace(/\\/g, '/');
             for (const imp of node.imports) {
-                // Resolve relative import to a file in the map
-                const target = nodes.find(n => n.relativePath.replace(/\.[^.]+$/, '') ===
-                    imp.replace(/^\.\//, '').replace(/^\.\.\//, ''));
+                // 2. Resolve relative imports (e.g., ../utils) to a project-relative path
+                let resolvedRelative = path.join(currentFileDir, imp).replace(/\\/g, '/');
+                const target = nodes.find(n => {
+                    const projectPath = n.relativePath.replace(/\\/g, '/').replace(/\.[^.]+$/, '');
+                    // Match if the paths are identical or if the import matches the end of a path
+                    return projectPath === resolvedRelative || projectPath.endsWith(resolvedRelative);
+                });
                 if (target) {
-                    graphData.edges.push({ from: node.relativePath, to: target.relativePath });
+                    graphData.edges.push({
+                        from: sourceId,
+                        to: target.relativePath.replace(/\\/g, '/')
+                    });
                 }
             }
         }
@@ -253,13 +275,13 @@ function draw() {
 
     // Label
     ctx.fillStyle = isSelected ? '#4ec9b0' : '#ccc';
-    ctx.font = \`\${(isSelected ? 12 : 10) / zoom}px 'Segoe UI', sans-serif\`;
+    ctx.font = ((isSelected ? 12 : 10) / zoom) + "px 'Segoe UI', sans-serif";
     ctx.textAlign = 'center';
     ctx.fillText(n.label, n.x, n.y + r + 12 / zoom);
   });
 
   ctx.restore();
-  statsEl.textContent = \`\${visibleNodes.length} files · \${edges.length} imports\`;
+  statsEl.textContent = visibleNodes.length + ' files · ' + edges.length + ' imports';
 }
 
 function filterGraph(text) {
@@ -292,16 +314,19 @@ canvas.addEventListener('mousemove', e => {
     panY = e.offsetY - panStart.y;
   }
 
-  const n = getNodeAt(e.offsetX, e.offsetY);
+const n = getNodeAt(e.offsetX, e.offsetY);
   if (n) {
     const deps = edges.filter(e => e.from === n.id).map(e => e.to);
     const usedBy = edges.filter(e => e.to === n.id).map(e => e.from);
+    
     tooltip.style.display = 'block';
     tooltip.style.left = (e.clientX + 14) + 'px';
     tooltip.style.top = (e.clientY - 10) + 'px';
-    tooltip.innerHTML = \`<b>\${n.id}</b><br>
-      Imports: \${deps.length ? deps.map(d => d.split('/').pop()).join(', ') : 'none'}<br>
-      Used by: \${usedBy.length ? usedBy.map(d => d.split('/').pop()).join(', ') : 'none'}\`;
+
+    // CHANGE: Use a regex [/\\] to split on both forward and backslashes
+    tooltip.innerHTML = '<b>' + n.id + '</b><br>'
+    + 'Imports: ' + (deps.length ? deps.map(d => d.split('/').pop()).join(', ') : 'none') + '<br>' // <-- UPDATE
+    + 'Used by: ' + (usedBy.length ? usedBy.map(d => d.split('/').pop()).join(', ') : 'none');    // <-- UPDATE
   } else {
     tooltip.style.display = 'none';
   }

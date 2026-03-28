@@ -1,7 +1,7 @@
 {
   "name": "codelens-ai",
   "displayName": "CodeLens AI",
-  "description": "Understand any codebase \u2014 file explainer, dependency graph, and AI chat. Works with Anthropic, OpenAI, Gemini, Groq, and Ollama.",
+  "description": "Understand any codebase — file explainer, dependency graph, and AI chat. Works with Anthropic, OpenAI, Gemini, Groq, and Ollama.",
   "version": "0.3.0",
   "engines": {
     "vscode": "^1.85.0"
@@ -23,39 +23,48 @@
       },
       {
         "command": "codelensai.explainFile",
-        "title": "CodeLens AI: Explain This File"
+        "title": "CodeLens AI: Explain This File",
+        "icon": "$(book)"
       },
       {
         "command": "codelensai.explainSelection",
-        "title": "CodeLens AI: Explain Selected Code"
+        "title": "CodeLens AI: Explain Selected Code",
+        "icon": "$(symbol-method)"
       },
       {
         "command": "codelensai.projectOverview",
-        "title": "CodeLens AI: Project Overview (I'm Lost)"
+        "title": "CodeLens AI: Project Overview (I'm Lost)",
+        "icon": "$(compass)"
       },
       {
         "command": "codelensai.showDependencyGraph",
-        "title": "CodeLens AI: Show Dependency Graph"
+        "title": "CodeLens AI: Show Dependency Graph",
+        "icon": "$(graph)"
       },
       {
         "command": "codelensai.generateReadme",
-        "title": "CodeLens AI: Generate README"
+        "title": "CodeLens AI: Generate README",
+        "icon": "$(file-code)"
       },
       {
         "command": "codelensai.openChat",
-        "title": "CodeLens AI: Open Chat"
+        "title": "CodeLens AI: Open Chat",
+        "icon": "$(comment-discussion)"
       },
       {
         "command": "codelensai.setApiKey",
-        "title": "CodeLens AI: Set API Key"
+        "title": "CodeLens AI: Set API Key",
+        "icon": "$(key)"
       },
       {
         "command": "codelensai.switchProvider",
-        "title": "CodeLens AI: Switch AI Provider"
+        "title": "CodeLens AI: Switch AI Provider",
+        "icon": "$(arrow-swap)"
       },
       {
         "command": "codelensai.showProviderStatus",
-        "title": "CodeLens AI: Show Current Provider & Model"
+        "title": "CodeLens AI: Show Current Provider & Model",
+        "icon": "$(info)"
       },
       {
         "command": "codelensai.genArchDiagram",
@@ -63,6 +72,25 @@
         "icon": "$(type-hierarchy)"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codelensai",
+          "title": "CodeLens AI",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codelensai": [
+        {
+          "id": "codelensai.welcomeView",
+          "name": "CodeLens AI",
+          "type": "webview",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
     "menus": {
       "explorer/context": [
         {
@@ -120,11 +148,11 @@
             "ollama"
           ],
           "enumDescriptions": [
-            "Anthropic Claude \u2014 claude-opus-4-5, sonnet, haiku",
-            "OpenAI GPT \u2014 gpt-4o, gpt-4-turbo, gpt-3.5-turbo",
-            "Google Gemini \u2014 gemini-2.0-flash, gemini-1.5-pro",
-            "Groq \u2014 fast llama3 / mixtral inference",
-            "Ollama \u2014 local models, no API key needed"
+            "Anthropic Claude — claude-opus-4-5, sonnet, haiku",
+            "OpenAI GPT — gpt-4o, gpt-4-turbo, gpt-3.5-turbo",
+            "Google Gemini — gemini-2.0-flash, gemini-1.5-pro",
+            "Groq — fast llama3 / mixtral inference",
+            "Ollama — local models, no API key needed"
           ],
           "description": "Which AI provider to use"
         },
@@ -149,24 +177,6 @@
           "description": "Max file size in bytes sent to AI"
         }
       }
-    },
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "codelensai",
-          "title": "CodeLens AI",
-          "icon": "media/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "codelensai": [
-        {
-          "type": "webview",
-          "id": "codelensai.sidebarView",
-          "name": "CodeLens AI"
-        }
-      ]
     }
   },
   "scripts": {
