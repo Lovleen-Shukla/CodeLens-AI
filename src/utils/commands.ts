@@ -1,243 +1,269 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { AIClient } from './aiClient';
+import { ExplainPanel } from '../panels/explainPanel';
 import {
-  getWorkspaceRoot, buildFileContext, buildFileTree,
-  detectTechStack, readFileSafe, getWorkspaceFiles,
+  getWorkspaceRoot, readFileSafe, buildFileTree,
+  detectTechStack, getWorkspaceFiles,
 } from './contextBuilder';
 
-const SYSTEM_PROMPT = `You are CodeLens AI, an expert code explainer built into VS Code.
-Your job is to help vibe coders understand their projects in plain, simple English.
-- Be concise but complete. Use bullet points where helpful.
-- Mention which files/functions are involved.
-- Avoid jargon unless you explain it.
-- Always tell them what the code DOES, not just what it IS.`;
-
-// ── Explain File ─────────────────────────────────────────────────────────────
-export async function explainFile(ai: AIClient, uri?: vscode.Uri): Promise<void> {
-  let filePath: string | undefined;
-
-  if (uri) {
-    filePath = uri.fsPath;
-  } else {
-    filePath = vscode.window.activeTextEditor?.document.uri.fsPath;
-  }
-
-  if (!filePath) {
-    vscode.window.showWarningMessage('CodeLens AI: No file selected.');
-    return;
-  }
-
-  const rootPath = getWorkspaceRoot();
-  if (!rootPath) {
-    vscode.window.showWarningMessage('CodeLens AI: Open a workspace folder first.');
-    return;
-  }
-
-  const fileName = path.basename(filePath);
-  const relativePath = path.relative(rootPath, filePath);
-
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: `Explaining ${fileName}...`, cancellable: false },
-    async () => {
-      const context = buildFileContext(filePath!, rootPath);
-      const prompt = `Please explain this file in plain English:
-
-${context}
-
-Provide:
-1. What this file's PURPOSE is in the project (1-2 sentences)
-2. What the main things it DOES (bullet points)
-3. What other files it DEPENDS ON and why
-4. What other parts of the project might DEPEND ON this file
-5. Any important patterns or things a newcomer should know`;
-
-      const explanation = await ai.ask(prompt, SYSTEM_PROMPT);
-
-      const doc = await vscode.workspace.openTextDocument({
-        content: `# ${fileName}\n\n${explanation}\n\n---\n*Path: ${relativePath}*`,
-        language: 'markdown',
-      });
-      await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Beside });
-    }
-  );
-}
-
-// ── Explain Selection ────────────────────────────────────────────────────────
-export async function explainSelection(ai: AIClient): Promise<void> {
+// ── Explain selected code ──────────────────────────────────────────────────
+export async function explainSelection(ai: AIClient, context: vscode.ExtensionContext) {
   const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    vscode.window.showWarningMessage('CodeLens AI: Open a file first.');
-    return;
-  }
+  if (!editor) { vscode.window.showWarningMessage('Open a file first.'); return; }
 
   const selection = editor.selection;
-  if (selection.isEmpty) {
-    vscode.window.showWarningMessage('CodeLens AI: Select some code first.');
-    return;
-  }
+  const selectedText = editor.document.getText(selection.isEmpty ? undefined : selection);
+  if (!selectedText.trim()) { vscode.window.showWarningMessage('Select some code first.'); return; }
 
-  const selectedText = editor.document.getText(selection);
-  const filePath = editor.document.uri.fsPath;
-  const fileName = path.basename(filePath);
-  const language = editor.document.languageId;
+  const fileName = path.basename(editor.document.uri.fsPath);
+  const lang = editor.document.languageId;
+  const startLine = selection.isEmpty ? 1 : selection.start.line + 1;
+  const endLine = selection.isEmpty ? editor.document.lineCount : selection.end.line + 1;
 
-  // Also grab a bit of surrounding file context
-  const startLine = Math.max(0, selection.start.line - 20);
-  const endLine = Math.min(editor.document.lineCount, selection.end.line + 20);
-  const surroundingRange = new vscode.Range(startLine, 0, endLine, 0);
-  const surroundingContext = editor.document.getText(surroundingRange);
+  const title = selection.isEmpty
+    ? `${fileName} (full file)`
+    : `${fileName} · Lines ${startLine}–${endLine}`;
 
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'Explaining code...', cancellable: false },
-    async () => {
-      const prompt = `Explain this ${language} code from ${fileName}:
+  // Open the beautiful ExplainPanel
+  const panel = ExplainPanel.show(context, title, selectedText, lang);
 
-\`\`\`${language}
+  const prompt = `Explain this ${lang} code from ${fileName} in detail.
+
+\`\`\`${lang}
 ${selectedText}
 \`\`\`
 
-Surrounding context (for reference):
-\`\`\`${language}
-${surroundingContext}
+Structure your explanation with these sections:
+
+## Summary
+One sentence: what this code does.
+
+## How it works — step-by-step
+Walk through the code line by line or block by block. Use a table:
+
+| Step | Code / Concept | What it does | Why |
+|------|---------------|--------------|-----|
+
+## Inputs & Outputs
+What goes in, what comes out.
+
+## Dependencies & side effects
+What does this code rely on? What does it change?
+
+## Patterns & conventions used
+Any design patterns, idioms, or conventions worth noting.
+
+## Potential issues or improvements
+Anything that could be cleaner, safer, or more performant.`;
+
+  try {
+    await ai.stream(
+      [{ role: 'user', content: prompt }],
+      `You are an expert ${lang} code explainer. Give thorough, clear explanations. Use markdown with tables where helpful.`,
+      (chunk) => { panel.stream(chunk); }
+    );
+    panel.done();
+  } catch (e: unknown) {
+    panel.error(String(e));
+  }
+}
+
+// ── Explain a specific file ────────────────────────────────────────────────
+export async function explainFile(ai: AIClient, context: vscode.ExtensionContext, filePath?: string) {
+  const rootPath = getWorkspaceRoot();
+
+  // If no path passed, use active editor
+  let targetPath = filePath;
+  if (!targetPath) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) { vscode.window.showWarningMessage('Open a file first.'); return; }
+    targetPath = editor.document.uri.fsPath;
+  }
+
+  const content = readFileSafe(targetPath, 30000);
+  if (!content) { vscode.window.showWarningMessage('Could not read file.'); return; }
+
+  const fileName = path.basename(targetPath);
+  const lang = getLangFromExt(path.extname(targetPath).slice(1));
+  const relPath = rootPath ? path.relative(rootPath, targetPath) : fileName;
+
+  const imports = content.match(/(?:import|require|from)\s*.*?['"]([^'"]+)['"]/g)?.slice(0, 10).join('\n') ?? 'none';
+
+  const panel = ExplainPanel.show(context, `${fileName} — File Explanation`, content, lang);
+
+  const prompt = `Explain this file thoroughly.
+
+File: ${relPath}
+Language: ${lang}
+Detected imports:
+${imports}
+
+Full file contents:
+\`\`\`${lang}
+${content}
 \`\`\`
 
-Explain:
-1. What this code DOES in plain English (1-2 sentences first)
-2. How it works step by step
-3. What inputs it takes and what it returns/outputs
-4. Why it might be written this way (patterns used)
-5. Any gotchas or things to watch out for`;
+Use these sections:
 
-      const explanation = await ai.ask(prompt, SYSTEM_PROMPT);
+## Summary
+What this file does in 1-2 sentences.
 
-      // Show inline in an output channel for quick reads
-      const panel = vscode.window.createOutputChannel('CodeLens AI — Code Explanation');
-      panel.clear();
-      panel.appendLine(`=== Code Explanation ===`);
-      panel.appendLine(`File: ${fileName} | Lines ${selection.start.line + 1}–${selection.end.line + 1}`);
-      panel.appendLine('');
-      panel.appendLine(explanation);
-      panel.show(true);
-    }
-  );
+## Responsibilities
+Bullet list of what this file is responsible for.
+
+## How it works
+Walk through the key functions/classes/logic with a table:
+
+| Function / Block | Purpose | Key behaviour |
+|-----------------|---------|--------------|
+
+## Dependencies (imports)
+What this file imports and why each dependency is needed.
+
+## Used by
+What other files likely import or call this file.
+
+## Patterns & conventions
+Design patterns, idioms, or conventions used.
+
+## Notes & gotchas
+Anything non-obvious, tricky, or worth watching out for.`;
+
+  try {
+    await ai.stream(
+      [{ role: 'user', content: prompt }],
+      `You are an expert code explainer. Give thorough, clear explanations with markdown tables.`,
+      (chunk) => { panel.stream(chunk); }
+    );
+    panel.done();
+  } catch (e: unknown) {
+    panel.error(String(e));
+  }
 }
 
-// ── Project Overview ("I'm Lost") ────────────────────────────────────────────
-export async function projectOverview(ai: AIClient): Promise<void> {
+// ── Project Overview ───────────────────────────────────────────────────────
+export async function projectOverview(ai: AIClient, context: vscode.ExtensionContext) {
   const rootPath = getWorkspaceRoot();
-  if (!rootPath) {
-    vscode.window.showWarningMessage('CodeLens AI: Open a workspace folder first.');
-    return;
-  }
+  if (!rootPath) { vscode.window.showWarningMessage('Open a workspace folder first.'); return; }
 
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'Analysing your project...', cancellable: false },
-    async () => {
-      const tree = buildFileTree(rootPath);
-      const stack = detectTechStack(rootPath);
+  const stack = detectTechStack(rootPath).join(', ') || 'unknown';
+  const tree = buildFileTree(rootPath);
+  const files = getWorkspaceFiles(rootPath, 20);
+  const entryContent = files.length > 0 ? readFileSafe(files[0], 3000) : '';
 
-      // Sample a few key files for extra context
-      const allFiles = getWorkspaceFiles(rootPath, 10);
-      const samples = allFiles.slice(0, 5).map(f => {
-        const rel = path.relative(rootPath, f);
-        const content = readFileSafe(f, 3000);
-        return `--- ${rel} ---\n${content}`;
-      }).join('\n\n');
+  const folderName = path.basename(rootPath);
+  const panel = ExplainPanel.show(context, `${folderName} — Project Overview`, tree, 'text');
 
-      const prompt = `I'm a developer who just opened this project and I'm confused. Give me a complete onboarding overview.
+  const prompt = `Give a comprehensive project overview for a developer onboarding to this codebase.
 
-Detected tech stack: ${stack.join(', ') || 'unknown'}
+Project: ${folderName}
+Tech Stack: ${stack}
 
-File tree:
+File Tree:
+\`\`\`
 ${tree}
+\`\`\`
 
-Sample files:
-${samples}
+Entry file (${files[0] ? path.basename(files[0]) : 'unknown'}):
+\`\`\`
+${entryContent}
+\`\`\`
 
-Please provide:
-1. **What this project is** — what does it do? (2-3 sentences)
-2. **Tech stack** — what languages/frameworks are being used and why
-3. **Project structure** — what each main folder/file does
-4. **Entry point** — where does the code start running?
-5. **Key files to understand first** — top 5 files a newcomer should read
-6. **How data flows** — brief description of how the app works end-to-end
-7. **Quick start tips** — any important things to know before editing code`;
+Structure your response:
 
-      const overview = await ai.ask(prompt, SYSTEM_PROMPT);
+## What this project does
+2-3 sentence summary.
 
-      const doc = await vscode.workspace.openTextDocument({
-        content: `# Project Overview\n\n${overview}\n\n---\n*Generated by CodeLens AI*`,
-        language: 'markdown',
-      });
-      await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
-    }
-  );
+## Tech Stack
+| Technology | Role | Notes |
+|-----------|------|-------|
+
+## Project Structure
+Explain the folder/file layout — what each major directory/file is for.
+
+## Entry Points & Key Files
+| File | Purpose |
+|------|---------|
+
+## How to get started
+Step-by-step: how would a new developer run and understand this project?
+
+## Architecture at a glance
+High-level: how does data flow? How do the pieces connect?
+
+## What to read first
+The 5 most important files to read and in what order.`;
+
+  try {
+    await ai.stream(
+      [{ role: 'user', content: prompt }],
+      'You are a senior engineer onboarding a new developer. Be thorough and practical.',
+      (chunk) => { panel.stream(chunk); }
+    );
+    panel.done();
+  } catch (e: unknown) {
+    panel.error(String(e));
+  }
 }
 
-// ── Generate README ───────────────────────────────────────────────────────────
-export async function generateReadme(ai: AIClient): Promise<void> {
+// ── Generate README ────────────────────────────────────────────────────────
+export async function generateReadme(ai: AIClient, context: vscode.ExtensionContext) {
   const rootPath = getWorkspaceRoot();
-  if (!rootPath) {
-    vscode.window.showWarningMessage('CodeLens AI: Open a workspace folder first.');
-    return;
-  }
+  if (!rootPath) { vscode.window.showWarningMessage('Open a workspace folder first.'); return; }
 
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'Generating README...', cancellable: false },
-    async () => {
-      const tree = buildFileTree(rootPath);
-      const stack = detectTechStack(rootPath);
-      const allFiles = getWorkspaceFiles(rootPath, 20);
-      const samples = allFiles.slice(0, 8).map(f => {
-        const rel = path.relative(rootPath, f);
-        const content = readFileSafe(f, 2000);
-        return `--- ${rel} ---\n${content}`;
-      }).join('\n\n');
+  const stack = detectTechStack(rootPath).join(', ') || 'unknown';
+  const tree = buildFileTree(rootPath);
+  const folderName = path.basename(rootPath);
 
-      const prompt = `Generate a professional, complete README.md for this project.
+  const panel = ExplainPanel.show(context, `${folderName} — Generated README`, '', 'markdown');
 
-Tech stack: ${stack.join(', ') || 'unknown'}
+  const prompt = `Generate a professional, complete README.md for this project.
 
-File tree:
+Project: ${folderName}
+Stack: ${stack}
+
+File Tree:
+\`\`\`
 ${tree}
+\`\`\`
 
-Sample code:
-${samples}
-
-The README should include:
-# Project Name (infer from the code)
-A brief description
+Write a complete README.md with:
+# Project Name
+Short description + badges placeholder
 
 ## Features
 ## Tech Stack
+## Prerequisites
+## Installation
+## Usage / Getting Started
 ## Project Structure
-## Getting Started (installation + running)
-## How It Works (brief architecture overview)
-## Contributing (basic guidelines)
+## API Reference (if applicable)
+## Contributing
 ## License
 
-Make it professional but friendly. Use proper markdown formatting.`;
+Make it professional, developer-friendly, and accurate based on the file structure.`;
 
-      const readme = await ai.ask(prompt, SYSTEM_PROMPT);
+  try {
+    await ai.stream(
+      [{ role: 'user', content: prompt }],
+      'You are a technical writer. Generate a professional README.md file in proper markdown.',
+      (chunk) => { panel.stream(chunk); }
+    );
+    panel.done();
+  } catch (e: unknown) {
+    panel.error(String(e));
+  }
+}
 
-      const doc = await vscode.workspace.openTextDocument({
-        content: readme,
-        language: 'markdown',
-      });
-      await vscode.window.showTextDocument(doc, { preview: false });
-
-      const save = await vscode.window.showInformationMessage(
-        'README generated! Save it to your project?',
-        'Save as README.md',
-        'Keep as preview'
-      );
-
-      if (save === 'Save as README.md') {
-        const saveUri = vscode.Uri.file(path.join(rootPath, 'README.md'));
-        await vscode.workspace.fs.writeFile(saveUri, Buffer.from(readme, 'utf8'));
-        vscode.window.showInformationMessage('README.md saved!');
-      }
-    }
-  );
+// ── Helper ─────────────────────────────────────────────────────────────────
+function getLangFromExt(ext: string): string {
+  const map: Record<string, string> = {
+    ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+    py: 'python', go: 'go', rs: 'rust', java: 'java', rb: 'ruby',
+    php: 'php', cs: 'csharp', cpp: 'cpp', c: 'c', html: 'html',
+    css: 'css', scss: 'scss', json: 'json', md: 'markdown',
+    yaml: 'yaml', yml: 'yaml', sh: 'bash', sql: 'sql',
+  };
+  return map[ext.toLowerCase()] || ext || 'text';
 }

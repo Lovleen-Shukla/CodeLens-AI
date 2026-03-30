@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AIClient, PROVIDERS } from './utils/aiClient';
 import { CodeLensProvider } from './providers/codeLensProvider';
-import { HoverProvider } from './providers/hoverProvider';
+import { HoverProvider, registerExplainHoverDetail } from './providers/hoverProvider';
 import { DashboardPanel } from './panels/dashboardPanel';
 import { explainFile, explainSelection, projectOverview, generateReadme } from './utils/commands';
 
@@ -9,9 +9,8 @@ export function activate(context: vscode.ExtensionContext) {
   console.log('CodeLens AI is now active');
   const aiClient = new AIClient(context);
 
-  // ── Sidebar: invisible — just opens the real dashboard ─────────────────
-  // Must be registered so the activity bar icon renders. The webview itself
-  // is fully blank/transparent — no button, no text shown to the user.
+  // ── Sidebar: invisible — just opens the real dashboard ──────────────────
+  // Registered so the activity bar icon renders. The webview is blank.
   const sidebarProvider: vscode.WebviewViewProvider = {
     resolveWebviewView(view: vscode.WebviewView) {
       view.webview.options = { enableScripts: false };
@@ -19,7 +18,7 @@ export function activate(context: vscode.ExtensionContext) {
         <head><style>html,body{background:transparent;margin:0;padding:0;width:0;height:0}</style></head>
         <body></body>
       </html>`;
-      // Immediately open the full dashboard panel
+      // Auto-open the full dashboard panel
       vscode.commands.executeCommand('codelensai.openDashboard');
     }
   };
@@ -30,17 +29,20 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // ── CodeLens hints above functions ─────────────────────────────────────
+  // ── CodeLens hints above functions ──────────────────────────────────────
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider('*', new CodeLensProvider())
   );
 
-  // ── Hover provider ──────────────────────────────────────────────────────
+  // ── Hover provider ───────────────────────────────────────────────────────
   context.subscriptions.push(
     vscode.languages.registerHoverProvider('*', new HoverProvider(aiClient))
   );
 
-  // ── Commands ────────────────────────────────────────────────────────────
+  // ── Register the "Explain in detail" command used by hover tooltips ──────
+  registerExplainHoverDetail(context, aiClient);
+
+  // ── Commands ─────────────────────────────────────────────────────────────
   context.subscriptions.push(
 
     vscode.commands.registerCommand('codelensai.openDashboard', () => {
@@ -48,23 +50,24 @@ export function activate(context: vscode.ExtensionContext) {
     }),
 
     vscode.commands.registerCommand('codelensai.explainFile', async (uri?: vscode.Uri) => {
-      await explainFile(aiClient, uri);
+      // uri comes from right-click context menu; falls back to active editor
+      await explainFile(aiClient, context, uri?.fsPath);
     }),
 
     vscode.commands.registerCommand('codelensai.explainSelection', async () => {
-      await explainSelection(aiClient);
+      await explainSelection(aiClient, context);
     }),
 
     vscode.commands.registerCommand('codelensai.projectOverview', async () => {
-      await projectOverview(aiClient);
+      await projectOverview(aiClient, context);
+    }),
+
+    vscode.commands.registerCommand('codelensai.generateReadme', async () => {
+      await generateReadme(aiClient, context);
     }),
 
     vscode.commands.registerCommand('codelensai.showDependencyGraph', () => {
       DashboardPanel.show(context, aiClient);
-    }),
-
-    vscode.commands.registerCommand('codelensai.generateReadme', async () => {
-      await generateReadme(aiClient);
     }),
 
     vscode.commands.registerCommand('codelensai.openChat', () => {
@@ -108,7 +111,7 @@ export function activate(context: vscode.ExtensionContext) {
         placeHolder: 'Select an AI provider',
         matchOnDetail: true,
       });
-      if (!picked) return;
+      if (!picked) { return; }
       const config = vscode.workspace.getConfiguration('codelensai');
       await config.update('provider', picked.id, vscode.ConfigurationTarget.Global);
       await config.update('model', '', vscode.ConfigurationTarget.Global);
@@ -118,7 +121,7 @@ export function activate(context: vscode.ExtensionContext) {
         const choice = await vscode.window.showInformationMessage(
           `Switched to ${picked.label}. Set API key now?`, 'Set API Key', 'Later'
         );
-        if (choice === 'Set API Key') vscode.commands.executeCommand('codelensai.setApiKey');
+        if (choice === 'Set API Key') { vscode.commands.executeCommand('codelensai.setApiKey'); }
       }
     }),
 
@@ -128,15 +131,16 @@ export function activate(context: vscode.ExtensionContext) {
       const choice = await vscode.window.showInformationMessage(
         `CodeLens AI · ${cfg.name} · ${model}`, 'Switch Provider', 'Change Model'
       );
-      if (choice === 'Switch Provider') vscode.commands.executeCommand('codelensai.switchProvider');
+      if (choice === 'Switch Provider') { vscode.commands.executeCommand('codelensai.switchProvider'); }
       if (choice === 'Change Model') {
         const m = await vscode.window.showInputBox({ prompt: `Model for ${cfg.name}`, value: model });
-        if (m) vscode.workspace.getConfiguration('codelensai').update('model', m, vscode.ConfigurationTarget.Global);
+        if (m) { vscode.workspace.getConfiguration('codelensai').update('model', m, vscode.ConfigurationTarget.Global); }
       }
     })
+
   );
 
-  // ── First-run prompt ────────────────────────────────────────────────────
+  // ── First-run prompt ─────────────────────────────────────────────────────
   const provider = aiClient.getProvider();
   context.secrets.get(`codelensai.apiKey.${provider}`).then(key => {
     if (!key && provider !== 'ollama') {
@@ -144,8 +148,8 @@ export function activate(context: vscode.ExtensionContext) {
         'CodeLens AI is ready! Open the dashboard to get started.',
         'Open Dashboard', 'Set API Key'
       ).then(choice => {
-        if (choice === 'Open Dashboard') vscode.commands.executeCommand('codelensai.openDashboard');
-        if (choice === 'Set API Key') vscode.commands.executeCommand('codelensai.setApiKey');
+        if (choice === 'Open Dashboard') { vscode.commands.executeCommand('codelensai.openDashboard'); }
+        if (choice === 'Set API Key') { vscode.commands.executeCommand('codelensai.setApiKey'); }
       });
     }
   });
