@@ -1,8 +1,19 @@
 {
+
   "name": "codelens-ai",
   "displayName": "CodeLens AI",
   "description": "Understand any codebase — file explainer, dependency graph, and AI chat. Works with Anthropic, OpenAI, Gemini, Groq, and Ollama.",
   "version": "0.3.0",
+
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lovleen-Shukla/CodeAtlas-AI.git"
+  },
+  "homepage": "https://github.com/Lovleen-Shukla/CodeAtlas-AI",
+  "bugs": {
+    "url": "https://github.com/Lovleen-Shukla/CodeAtlas-AI/issues"
+  },
+
   "engines": {
     "vscode": "^1.85.0"
   },
