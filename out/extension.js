@@ -40,6 +40,7 @@ const aiClient_1 = require("./utils/aiClient");
 const codeLensProvider_1 = require("./providers/codeLensProvider");
 const hoverProvider_1 = require("./providers/hoverProvider");
 const dashboardPanel_1 = require("./panels/dashboardPanel");
+const dependencyGraphPanel_1 = require("./panels/dependencyGraphPanel");
 const commands_1 = require("./utils/commands");
 function activate(context) {
     console.log('CodeLens AI is now active');
@@ -79,7 +80,7 @@ function activate(context) {
     }), vscode.commands.registerCommand('codelensai.generateReadme', async () => {
         await (0, commands_1.generateReadme)(aiClient, context);
     }), vscode.commands.registerCommand('codelensai.showDependencyGraph', () => {
-        dashboardPanel_1.DashboardPanel.show(context, aiClient);
+        dependencyGraphPanel_1.DependencyGraphPanel.show(context);
     }), vscode.commands.registerCommand('codelensai.openChat', () => {
         dashboardPanel_1.DashboardPanel.show(context, aiClient);
     }), vscode.commands.registerCommand('codelensai.setApiKey', async () => {

@@ -3,6 +3,7 @@ import { AIClient, PROVIDERS } from './utils/aiClient';
 import { CodeLensProvider } from './providers/codeLensProvider';
 import { HoverProvider, registerExplainHoverDetail } from './providers/hoverProvider';
 import { DashboardPanel } from './panels/dashboardPanel';
+import { DependencyGraphPanel } from './panels/dependencyGraphPanel';
 import { explainFile, explainSelection, projectOverview, generateReadme } from './utils/commands';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -67,7 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
     }),
 
     vscode.commands.registerCommand('codelensai.showDependencyGraph', () => {
-      DashboardPanel.show(context, aiClient);
+      DependencyGraphPanel.show(context);
     }),
 
     vscode.commands.registerCommand('codelensai.openChat', () => {
