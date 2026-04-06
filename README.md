@@ -75,6 +75,38 @@ Hover any symbol in the editor for a 1–2 sentence AI explanation. Click **Expl
 One click generates a professional `README.md` from your project's file tree, tech stack, and structure.
 
 ---
+## 📸 Screenshots
+
+### 🧭 Dashboard
+
+<img src="screenshots/dashboard.png" width="60%" />
+
+---
+
+### 🔗 Dependency Graph
+
+<img src="screenshots/graph.png" width="60%" />
+
+---
+
+### 📄 File Explanation
+
+<img src="screenshots/explain.png" width="60%" />
+
+---
+
+### 💬 AI Chat
+
+<img src="screenshots/chat.png" width="20%" />
+
+---
+
+### 🏗 Architecture Diagram
+
+<img src="screenshots/architecture1.png" width="30%" />
+<img src="screenshots/architecture2.png" width="60%" />
+
+---
 
 ## Supported AI Providers
 
