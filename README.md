@@ -91,7 +91,7 @@ One click generates a professional `README.md` from your project's file tree, te
 
 ### 📄 File Explanation
 
-<img src="screenshots/explain.png" width="60%" />
+<img src="screenshots/explain.jpeg" width="60%" />
 
 ---
 
