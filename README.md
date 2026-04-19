@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="media/icon.png" alt="CodeLens AI Logo" width="128" height="128" />
+<!-- <img src="media/icon.svg" alt="CodeLens AI Logo" width="128" height="128" /> -->
 
 # CodeLens AI
 
